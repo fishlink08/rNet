@@ -14,5 +14,5 @@ rNet is a lightweight networking library / project built for experimenting with 
 Clone the repository:
 
 ```bash
-git clone https://github.com/your-username/rnet.git
+git clone https://github.com/rslovpt/rnet.git
 cd rnet
