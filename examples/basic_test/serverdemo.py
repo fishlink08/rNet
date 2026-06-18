@@ -1,7 +1,7 @@
 import rNet
 import time
 
-Server = rNet.Host(debug=False)
+Server = rNet.Host(debug=False, connections_allowed=10)
 
 with Server:
     Server.start()

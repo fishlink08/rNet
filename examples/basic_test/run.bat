@@ -1,7 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-start "Server Demo" python serverdemo.py
-start "Client Demo" python clientdemo.py
-start "Client2 Demo" python clientdemo2.py
+
+start "Server Demo" cmd /k python serverdemo.py
+start "Client Demo" cmd /k python clientdemo.py
+start "Client2 Demo" cmd /k python clientdemo2.py
+
 exit /b

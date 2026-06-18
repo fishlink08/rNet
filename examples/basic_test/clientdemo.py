@@ -1,5 +1,6 @@
 import rNet
 import time
+import json
 
 Client = rNet.Client(debug=False)
 
@@ -8,7 +9,9 @@ with Client:
 
     while True:
         time.sleep(0.1)
+        
+        jsonData = {"message": "yo whats up"}
+        Client.send(json.dumps(jsonData))
 
-        Client.send('yooo whats up')
         for data in Client.recieve():
             pass

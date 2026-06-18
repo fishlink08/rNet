@@ -41,13 +41,13 @@ def ClientConnect_PythonSocket(dest, debug=True):
     
     
 
-def ServerStart_PythonSocket(dest, debug=True, connected : dict={}):
+def ServerStart_PythonSocket(dest, debug=True, connected : dict={}, connections_allowed=10):
     AF_INET_ADDRESS = dest.split(':')[0]
     PORT = int(dest.split(':')[1])
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
     sock.bind((AF_INET_ADDRESS, PORT))
-    sock.listen()
+    sock.listen(connections_allowed)
     sock.setblocking(False)
 
     if debug:
