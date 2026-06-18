@@ -1,6 +1,6 @@
-# rnet
+# rNet
 
-rnet is a lightweight networking library / project built for experimenting with sockets, client-server communication, and real-time data transfer.
+rNet is a lightweight networking library / project built for experimenting with sockets, client-server communication, and real-time data transfer.
 
 ## Getting Started
 
