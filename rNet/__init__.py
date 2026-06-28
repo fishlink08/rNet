@@ -2,70 +2,26 @@
 
 from rNet.core import socket
 from rNet.core.room import Room
+from rNet.core.threaded import ServerThread, ClientThread
 
 import time
 import threading
+import json
 
-def ProcessData(self): 
+def ClientSystemInformation(self):
     while True:
-        time.sleep(self.ProcessorDelay)
-        for QueueItem in list(self.ProcessDataQueue):
-            userid, data = QueueItem
-
-            for userId, conn in self.Connected.items():
-                try:
-                    if userId != userid:
-                        conn.send(data.encode())
-                except Exception as e:
-                    if self.debug:
-                        print(f"Error sending data to user {userId}: ", e)
-                
-            self.ProcessDataQueue.remove(QueueItem)
-
-def ClientRecieveData(self): # Process Data Recieved (threaded)
-    while self.connected:
-        time.sleep(0.1)
-        try:
-            data = self.Sock.recv(1024)
-            if data:
-                self.RecieveQueue.append(data.decode())
-        except BlockingIOError:
-            time.sleep(0.01)
-            continue
-        except Exception as e:
-            if self.debug:
-                print("Error receiving data: ", e)
-            break
-
-def ServerRecieveData(self): # ON SEPERATE THREAD -- ORGANIZE SOON
-    RemoveCache = set()
-
-    while True:
-        for userId, conn in list(self.Connected.items()):
+        time.sleep(0.5)
+        if self.Connected:
             try:
-                data = conn.recv(1024)
-                if data:
-                    if self.debug:
-                        print(f"Received data from user {userId}: {data.decode()}")
-
-                    if data.decode() in ["ping", "room_info"]:
-                        if data.decode() == "room_info":
-                            info = self.room_information()
-                            conn.send(str(info).encode())
-
-                    self.ProcessDataQueue.append((userId, data.decode()))
+                self.Sock.send("room_info".encode())
+                
+                room_info = json.loads(self.Sock.recv(1024).decode())
+                if 'room_info' in room_info:
+                    self.SystemInformation['rooms'] = room_info
             except BlockingIOError:
                 continue
-            except Exception as e:
-                if self.debug:
-                    print(f"Error receiving data from user {userId}: {e}")
-                RemoveCache.add(userId)
-        
-        for toRemove in RemoveCache:
-            self.Connected.pop(toRemove, None)
-        RemoveCache.clear()
-
-
+            except Exception as excp:
+                pass
 
 class Host:
     def __init__(self, dest : str = '127.0.0.1:8001', debug : bool=True, connections_allowed : int=10):
@@ -94,7 +50,7 @@ class Host:
             print("Server Error, Disconnecting: ", exc_type, exc, tb)
 
     def get_user_list(self) -> list:
-        '''Get the list of connected users.'''
+        '''Get the list of Connected users.'''
         return list(self.Connected.keys())
 
     def start(self):
@@ -102,26 +58,30 @@ class Host:
 
         while not self.ServerSocket:
             time.sleep(0.1)
-            
-        RecvDataThread = threading.Thread(target=ServerRecieveData, daemon=True, args=(self,))
-        RecvDataThread.start()
 
-        ProcessDataThread = threading.Thread(target=ProcessData, daemon=True, args=(self,))
-        ProcessDataThread.start()
+        ServerThreadClass = ServerThread(self)
+            
+        RecvDataThread = threading.Thread(target=ServerThreadClass.run, daemon=True)
+        RecvDataThread.start()
 
     def create_room(self, name: str, connections_allowed: int) -> Room:
         '''Create a new room. \nParams:
         name: The name of the room.
         connections_allowed: The maximum number of connections allowed in the room.
         '''
-        room = Room(name, self.get_user_id(), connections_allowed)
+        room = Room(name, connections_allowed)
         self.Rooms.append(room)
+
         return room
     
-    def room_information(self) -> dict:
-        '''Return information about all rooms.  '''
-        return {room.name: {"host": room.host, "connections_allowed": room.connections_allowed, "clients": room.get_client_list()} for room in self.Rooms}
-
+    def room_information(self) -> list:
+        '''Return information about all rooms.'''
+        info = [[room.name, room.get_client_list()] for room in self.Rooms]
+        if len(info) == 0:
+            return ['room_info', 'No Rooms']
+        info.append('room_info')
+        return info
+    
 class Client:
     '''Create a new Client instance. \nParams:
     dest: The destination address for the client.
@@ -131,12 +91,17 @@ class Client:
         self.dest = dest
         self.debug = debug
 
-        self.connected = False
-        self.Sock = None
+        self.Connected = False
+        self.ClientSocket = None
         self.UserId = None
 
         self.RecieveThread = None
         self.RecieveQueue = []
+
+        self.SystemPingThread = None
+        self.SystemInformation = {
+            'rooms': []
+        }
 
     def __enter__(self):
         if self.debug: 
@@ -148,9 +113,9 @@ class Client:
 
     def disconnect(self):
         '''Disconnect the client from the server.'''
-        if self.Sock:
-            self.Sock.close()
-        self.connected = False
+        if self.ClientSocket:
+            self.ClientSocket.close()
+        self.Connected = False
     
     def get_user_id(self) -> int:
         '''Get the user ID of the client.'''
@@ -166,15 +131,19 @@ class Client:
                 print("Retrying")
             result = socket.ClientConnect_PythonSocket(self.dest, self.debug)
 
-        self.Sock = result[0]
+        self.ClientSocket = result[0]
         self.UserId = result[1]
         
-        self.connected = True
+        self.Connected = True
+        self.ClientSocket.setblocking(False)
 
-        self.Sock.setblocking(False)
+        self.ClientThreadObject = ClientThread(self)
 
-        self.RecieveThread = threading.Thread(target=ClientRecieveData, daemon=True, args=(self,))
-        self.RecieveThread.start()
+        self.ClientThread = threading.Thread(target=self.ClientThreadObject.run, daemon=True)
+        self.ClientThread.start()
+
+        self.SystemPingThread = threading.Thread(target=ClientSystemInformation, daemon=True, args=(self,))
+        self.SystemPingThread.start()
 
         if self.debug:
             print("Connected")
@@ -182,13 +151,13 @@ class Client:
     def send(self, data : any) -> bool:
         '''Send data to the current server. \nParams:
         Data: The data to send to the server and other clients'''
-        if not self.connected:
+        if not self.Connected:
             if self.debug:
-                print("Not connected, cannot send data")
+                print("Not Connected, cannot send data")
             return False
 
         try:
-            self.Sock.send(data.encode())
+            self.ClientSocket.send(data.encode())
             return True
         except Exception as e:
             if self.debug:
@@ -198,9 +167,9 @@ class Client:
     def recieve(self, filter = None) -> dict:
         '''Recieve current thread of sent data by the server (room data if avail)'''
 
-        if not self.connected: 
+        if not self.Connected: 
             if self.debug:
-                print("error: not connected")
+                print("error: not Connected")
             return None
         
         for dataItem in self.RecieveQueue:
@@ -208,16 +177,7 @@ class Client:
             return {dataItem}
         return {}
 
-    def room_information(self) -> dict:
-        if self.connected:
-            try:
-                self.Sock.send("room_info".encode())
-                
-                info = self.Sock.recv(1024).decode()
-                print(info)
-
-            except Exception as e:
-                if self.debug:
-                    print("Error getting room information: ", e)
-                return {}
-        return {}
+    def room_information(self) -> list:
+        if self.Connected:
+            return self.SystemInformation['rooms']
+        return ["Not Connected to Server"]

@@ -1,7 +1,6 @@
 class Room:
-    def __init__(self, name, host, connections_allowed : int):
+    def __init__(self, name, connections_allowed : int):
         self.name = name
-        self.host = host
         self.connections_allowed = connections_allowed
         self.clients : list[int] = []
         

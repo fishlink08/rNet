@@ -1,0 +1,7 @@
+Work on:
+    
+    Transfer to a single-recieve with down-filtering line for client
+    Automatically close server on run if port is taken or address is invalid.
+    Add RUDP protocol as optional.
+    Perfomance updates and socket-error handling.
+    Better system-only information handling.
